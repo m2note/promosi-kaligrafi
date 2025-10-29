@@ -1,0 +1,5 @@
+{
+  "name": "Pajangan Promoshot Generator",
+  "description": "An application to generate stunning, realistic promotional images for your display products. Upload a model photo and a product photo, choose a background and aspect ratio, and let Gemini create a variety of professional poses.",
+  "requestFramePermissions": []
+}
