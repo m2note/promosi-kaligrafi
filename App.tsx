@@ -1,5 +1,5 @@
 
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { ImageFile, AspectRatio } from './types';
 import { backgroundOptions, aspectRatioOptions } from './constants';
 import { generatePromotionalImages } from './services/geminiService';
@@ -11,10 +11,49 @@ export default function App() {
   const [modelImage, setModelImage] = useState<ImageFile | null>(null);
   const [dollImage, setDollImage] = useState<ImageFile | null>(null);
   const [background, setBackground] = useState<string>(Object.keys(backgroundOptions)[0]);
+  const [customBackground, setCustomBackground] = useState<string>('');
+  const [customPose, setCustomPose] = useState<string>('');
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>('9:16');
   const [generatedImages, setGeneratedImages] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [hasApiKey, setHasApiKey] = useState<boolean>(true); // Default to true, will check on mount
+  const [manualApiKey, setManualApiKey] = useState<string>('');
+  const [showManualInput, setShowManualInput] = useState<boolean>(false);
+  const [saveStatus, setSaveStatus] = useState<string | null>(null);
+
+  useEffect(() => {
+    const savedKey = localStorage.getItem('manual_gemini_api_key');
+    if (savedKey) {
+      setManualApiKey(savedKey);
+    }
+
+    const checkApiKey = async () => {
+      if (window.aistudio) {
+        const hasKey = await window.aistudio.hasSelectedApiKey();
+        setHasApiKey(hasKey);
+      }
+    };
+    checkApiKey();
+  }, []);
+
+  const handleOpenKeySelector = async () => {
+    if (window.aistudio) {
+      await window.aistudio.openSelectKey();
+      setHasApiKey(true); // Assume success as per guidelines
+    }
+  };
+
+  const handleManualKeyChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setManualApiKey(e.target.value);
+    setSaveStatus(null);
+  };
+
+  const handleSaveManualKey = () => {
+    localStorage.setItem('manual_gemini_api_key', manualApiKey);
+    setSaveStatus('Kunci API berhasil disimpan!');
+    setTimeout(() => setSaveStatus(null), 3000);
+  };
 
   const processImageTo9x16 = (dataUrl: string, mimeType: string): Promise<ImageFile> => {
     return new Promise((resolve, reject) => {
@@ -129,12 +168,25 @@ export default function App() {
       return;
     }
 
+    if (!hasApiKey && !manualApiKey) {
+      setError('Silakan atur API Key berbayar Anda terlebih dahulu.');
+      return;
+    }
+
     setIsLoading(true);
     setError(null);
     setGeneratedImages([]);
 
     try {
-      const images = await generatePromotionalImages(modelImage, dollImage, background, aspectRatio);
+      const images = await generatePromotionalImages(
+        modelImage, 
+        dollImage, 
+        background, 
+        aspectRatio, 
+        customPose, 
+        customBackground,
+        manualApiKey || undefined
+      );
       setGeneratedImages(images);
     } catch (err) {
       console.error('Generation Error:', err);
@@ -143,7 +195,7 @@ export default function App() {
     } finally {
       setIsLoading(false);
     }
-  }, [modelImage, dollImage, background, aspectRatio]);
+  }, [modelImage, dollImage, background, aspectRatio, customPose, customBackground, hasApiKey, manualApiKey]);
 
   const canGenerate = useMemo(() => modelImage && dollImage && !isLoading, [modelImage, dollImage, isLoading]);
 
@@ -157,6 +209,76 @@ export default function App() {
           <p className="mt-2 text-lg text-gray-400 max-w-2xl mx-auto">
             Buat gambar promosi yang menakjubkan dan realistis untuk produk pajangan Anda dalam sekejap.
           </p>
+          
+          <div className="mt-6 flex flex-col items-center gap-4">
+            <div className="flex flex-wrap justify-center gap-3">
+                {!hasApiKey && !manualApiKey ? (
+                <button
+                    onClick={handleOpenKeySelector}
+                    className="inline-flex items-center px-6 py-2 border-2 border-yellow-500 text-yellow-500 font-bold rounded-full hover:bg-yellow-500/10 transition-all"
+                >
+                    ⚠️ Atur API Key Berbayar (Wajib)
+                </button>
+                ) : (
+                <button
+                    onClick={handleOpenKeySelector}
+                    className="inline-flex items-center px-6 py-2 border border-gray-700 text-gray-400 text-sm font-medium rounded-full hover:bg-gray-800 transition-all"
+                >
+                    ⚙️ Pilih Proyek Google Cloud
+                </button>
+                )}
+                
+                <button
+                    onClick={() => setShowManualInput(!showManualInput)}
+                    className="inline-flex items-center px-6 py-2 border border-pink-500/30 text-pink-400 text-sm font-medium rounded-full hover:bg-pink-500/10 transition-all"
+                >
+                    {showManualInput ? 'Sembunyikan Input Manual' : 'Isi API Key Manual'}
+                </button>
+            </div>
+
+            {showManualInput && (
+                <div className="w-full max-w-md animate-in fade-in slide-in-from-top-2 duration-300">
+                    <div className="flex gap-2">
+                        <input
+                            type="password"
+                            value={manualApiKey}
+                            onChange={handleManualKeyChange}
+                            placeholder="Tempelkan Gemini API Key Anda di sini..."
+                            className="flex-1 p-3 border border-gray-600 rounded-lg bg-gray-700 text-white focus:ring-pink-500 focus:border-pink-500 shadow-inner"
+                        />
+                        <button
+                            onClick={handleSaveManualKey}
+                            className="px-4 py-2 bg-pink-500 hover:bg-pink-600 text-white font-bold rounded-lg transition-colors"
+                        >
+                            Simpan
+                        </button>
+                    </div>
+                    {saveStatus && (
+                        <p className="mt-2 text-xs text-green-400 text-center animate-pulse">
+                            {saveStatus}
+                        </p>
+                    )}
+                    <p className="mt-2 text-[10px] text-gray-500 text-center">
+                        Kunci ini disimpan secara aman di browser Anda.
+                    </p>
+                    {manualApiKey && (
+                        <div className="mt-2 flex items-center justify-center gap-1 text-[10px] text-pink-400 font-medium">
+                            <span className="w-1.5 h-1.5 bg-pink-500 rounded-full animate-pulse"></span>
+                            API Key Manual Aktif
+                        </div>
+                    )}
+                </div>
+            )}
+          </div>
+          
+          {(!hasApiKey && !manualApiKey) && (
+            <p className="mt-2 text-xs text-yellow-500/80">
+              Anda perlu menggunakan API Key dari proyek Google Cloud berbayar untuk fitur ini. 
+              <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noopener noreferrer" className="underline ml-1">
+                Pelajari tentang penagihan.
+              </a>
+            </p>
+          )}
         </header>
 
         <div className="bg-gray-800/50 backdrop-blur-sm rounded-2xl shadow-2xl p-6 sm:p-8 border border-gray-700">
@@ -209,6 +331,35 @@ export default function App() {
                         <option key={value} value={value}>{name}</option>
                     ))}
                 </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8 mb-8">
+            <div>
+                <label htmlFor="custom-pose" className="block text-lg font-semibold text-gray-300 mb-2 text-center">
+                    Deskripsi Pose Kustom (Opsional)
+                </label>
+                <textarea
+                    id="custom-pose"
+                    value={customPose}
+                    onChange={(e) => setCustomPose(e.target.value)}
+                    placeholder="Contoh: Model sedang memegang produk dengan bangga di depan kamera..."
+                    className="w-full p-3 border border-gray-600 rounded-lg bg-gray-700 text-white focus:ring-pink-500 focus:border-pink-500 shadow-inner h-24 resize-none"
+                />
+                <p className="mt-1 text-xs text-gray-500 text-center italic">Kosongkan untuk menggunakan pose acak.</p>
+            </div>
+            <div>
+                <label htmlFor="custom-background" className="block text-lg font-semibold text-gray-300 mb-2 text-center">
+                    Latar Belakang Kustom (Opsional)
+                </label>
+                <textarea
+                    id="custom-background"
+                    value={customBackground}
+                    onChange={(e) => setCustomBackground(e.target.value)}
+                    placeholder="Contoh: Di dalam pesawat jet pribadi yang mewah dengan pemandangan awan..."
+                    className="w-full p-3 border border-gray-600 rounded-lg bg-gray-700 text-white focus:ring-pink-500 focus:border-pink-500 shadow-inner h-24 resize-none"
+                />
+                <p className="mt-1 text-xs text-gray-500 text-center italic">Kosongkan untuk menggunakan pilihan di atas.</p>
             </div>
           </div>
 

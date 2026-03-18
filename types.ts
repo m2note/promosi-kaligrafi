@@ -6,3 +6,12 @@ export interface ImageFile {
 }
 
 export type AspectRatio = '9:16' | '16:9' | '1:1';
+
+declare global {
+  interface Window {
+    aistudio: {
+      hasSelectedApiKey: () => Promise<boolean>;
+      openSelectKey: () => Promise<void>;
+    };
+  }
+}

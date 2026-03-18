@@ -44,10 +44,14 @@ async function generateSingleImage(
     for (let attempt = 0; attempt < 3; attempt++) {
         try {
             const result = await ai.models.generateContent({
-                model: 'gemini-2.5-flash-image',
+                model: 'gemini-3.1-flash-image-preview',
                 contents: { parts: [modelImagePart, dollImagePart, textPart] },
                 config: {
                     responseModalities: [Modality.IMAGE],
+                    imageConfig: {
+                        aspectRatio: aspectRatio === '1:1' ? '1:1' : aspectRatio === '16:9' ? '16:9' : '9:16',
+                        imageSize: '1K'
+                    }
                 }
             });
 
@@ -78,27 +82,40 @@ export async function generatePromotionalImages(
     modelImage: ImageFile,
     dollImage: ImageFile,
     background: string,
-    aspectRatio: AspectRatio
+    aspectRatio: AspectRatio,
+    customPose?: string,
+    customBackground?: string,
+    manualApiKey?: string
 ): Promise<string[]> {
-    if (!process.env.API_KEY) {
-        throw new Error("API_KEY environment variable is not set.");
+    const apiKey = manualApiKey || process.env.API_KEY;
+    if (!apiKey) {
+        throw new Error("API_KEY environment variable is not set and no manual key provided.");
     }
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = new GoogleGenAI({ apiKey: apiKey });
 
-    // Shuffle the poses array to get a random selection
-    const shuffleArray = (array: string[]) => {
-        const newArr = [...array]; // Create a copy to avoid mutating the original
-        for (let i = newArr.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [newArr[i], newArr[j]] = [newArr[j], newArr[i]];
-        }
-        return newArr;
-    };
+    // Use custom background if provided, otherwise use the selected one
+    const finalBackground = customBackground && customBackground.trim() !== '' ? customBackground : background;
 
-    const selectedPrompts = shuffleArray(POSES_PROMPTS).slice(0, 6);
+    // If custom pose is provided, use it for all 6 images
+    // If not, use the random selection from POSES_PROMPTS
+    let selectedPrompts: string[];
+    if (customPose && customPose.trim() !== '') {
+        selectedPrompts = Array(6).fill(customPose);
+    } else {
+        // Shuffle the poses array to get a random selection
+        const shuffleArray = (array: string[]) => {
+            const newArr = [...array]; // Create a copy to avoid mutating the original
+            for (let i = newArr.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [newArr[i], newArr[j]] = [newArr[j], newArr[i]];
+            }
+            return newArr;
+        };
+        selectedPrompts = shuffleArray(POSES_PROMPTS).slice(0, 6);
+    }
 
     const imagePromises = selectedPrompts.map(prompt =>
-        generateSingleImage(ai, modelImage, dollImage, prompt, background, aspectRatio)
+        generateSingleImage(ai, modelImage, dollImage, prompt, finalBackground, aspectRatio)
     );
 
     const results = await Promise.all(imagePromises);
